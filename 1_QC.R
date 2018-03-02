@@ -1,5 +1,7 @@
-require("RColorBrewer")
+
 args <- commandArgs(trailingOnly=TRUE)
+
+require("RColorBrewer")
 # countfile, annotationfile, prefix
 #args <- c("Correct_Raw_FC_NoMulti.txt","Annotation_Table.txt","Test")
 
@@ -113,10 +115,15 @@ calculate_thresholds <- function(scSCE, pSCE, eSCE, biotype) {
 	sRNAs <- biotype[biotype[,2] == "sRNA" | biotype[,2] == "snRNA" | biotype[,2] == "snoRNA" | biotype[,2] == "scaRNA",1]
 
 
-	Pos_ctrl <- c(min(pSCE$total_features), max(pSCE$total_features))
+	Pos_ctrl <- pSCE$total_features;
+	Pos_ctrl <- c(min(Pos_ctrl), max(Pos_ctrl))
+	if (median(Pos_ctrl) < 500) { # Pos_ctrl failed
+		Pos_ctrl <- Pos_ctrl[Pos_ctrl > 1000];
+		Pos_ctrl <- c(min(Pos_ctrl), max(scSCE$total_features))
+	}
 	scmean <- mean(scSCE$total_features[scSCE$total_features > Pos_ctrl[1] & scSCE$total_features < Pos_ctrl[2]])
 	scsd <- sd(scSCE$total_features[scSCE$total_features > Pos_ctrl[1] & scSCE$total_features < Pos_ctrl[2]])
-	gLo <- round(min(Pos_ctrl, scmean-3*scsd), digits=-3)
+	gLo <- round(max(min(Pos_ctrl, scmean-3*scsd), quantile(eSCE$total_features, probs=0.75)), digits=-3)
 	#if (max(eSCE$total_features) > gLo) {
 	#	gLo <- round(max(eSCE$total_features), digits=-3)
 	#}
@@ -124,17 +131,17 @@ calculate_thresholds <- function(scSCE, pSCE, eSCE, biotype) {
 
 
 	pc_prop <- colSums(counts(scSCE)[rownames(scSCE) %in% pc,])/scSCE$total_counts*100
-	m <- mean(pc_prop); s <- sd(pc_prop)+0.001;
+	m <- mean(pc_prop, na.rm=T); s <- sd(pc_prop, na.rm=T)+0.001;
 	pcLo <- signif(m-3*s, digits=1)
 
 	mt_prop <- colSums(counts(scSCE)[rownames(scSCE) %in% mt,])/scSCE$total_counts*100
-	m <- mean(mt_prop); s <- sd(mt_prop)+0.001;
+	m <- mean(mt_prop, na.rm=T); s <- sd(mt_prop, na.rm=T)+0.001;
 	mtHi <- signif(m+3*s, digits=1)
 	r_prop <- colSums(counts(scSCE)[rownames(scSCE) %in% rRNA,])/scSCE$total_counts*100
-	m <- mean(r_prop); s <- sd(r_prop)+0.001;
+	m <- mean(r_prop, na.rm=T); s <- sd(r_prop, na.rm=T)+0.001;
 	rHi <- signif(m+3*s, digits=1)
 	s_prop <- colSums(counts(scSCE)[rownames(scSCE) %in% sRNAs,])/scSCE$total_counts*100
-	m <- mean(s_prop); s <- sd(s_prop)+0.001;
+	m <- mean(s_prop, na.rm=T); s <- sd(s_prop, na.rm=T)+0.001;
 	sHi <- signif(m+3*s, digits=1)
 
 	thresholds <- list(gHi = gHi, gLo=gLo, pc=pcLo, mt=mtHi, rRNA=rHi, sRNA=sHi)
@@ -198,6 +205,17 @@ sink(paste(args[3], "QC_Thresholds.txt", sep="_"))
 print(thresholds)
 sink()
 
+# Plate position
+
+for(p in levels(scSCE$Plate)) {
+	file=paste(args[3], "SC",p,"PlateQC.png", sep="_")
+	print(file)
+	png(file, width=8*2, height=8, units="in", res=300)
+	scater::plotPlatePosition(scSCE[,scSCE$Plate==p], plate_position=scSCE$Well[scSCE$Plate==p], colour_by="total_features")
+	dev.off()
+}
+
+
 
 # Normalization
 scale_factor <- median(pData(sc_qc)$total_counts[pData(sc_qc)$Good])
@@ -242,6 +260,8 @@ glm_fun <- function(x) {
 }
 
 batch_corrected <- apply(get_exprs(scQC, "lognorm"), 1, glm_fun)
+batch_corrected[is.na(batch_corrected)] <- 0
+batch_corrected[!is.finite(batch_corrected)] <- 0
 set_exprs(scQC, "batchcor") <- t(batch_corrected)
 
 saveRDS(scQC, file=paste(args[3], "QCed_BatchCor.rds", sep="_"))
@@ -262,29 +282,33 @@ for(ty in types) {
 
 	# Feature Selection
 	require("M3Drop")
-	FS <- M3DropFeatureSelection(get_exprs(subset,"norm"), mt_method="fdr", mt_threshold=0.05)
-	fData(subset)$is.Feature <- rownames(fData(subset)) %in% FS$Gene
+	# 13 Feb 2018 modification
+	FS <- M3DropFeatureSelection(get_exprs(subset,"norm"), mt_method="fdr", mt_threshold=1)
+	fData(subset)$M3Drop_q.value <- FS[match(rownames(subset), FS$Gene),]$q.value
+	HVG <- BrenneckeGetVariableGenes(get_exprs(subset,"norm"), fdr=2)
+	fData(subset)$HVG_q.value <- HVG[match(rownames(subset), HVG$Gene),]$q.value
+	#fData(subset)$is.Feature <- rownames(fData(subset)) %in% FS$Gene
 
-	mat <- get_exprs(subset, "lognorm")[fData(subset)$is.Feature,]
+	mat <- get_exprs(subset, "lognorm")[fData(subset)$M3Drop_q.value < 0.05,]
 
 	# Dim Reductions
 	set.seed(1091)
 
-	PCA <- prcomp(mat)
-	pData(subset)$PC1 <- PCA$rotation[,1] 
-	pData(subset)$PC2 <- PCA$rotation[,2]
+	#PCA <- prcomp(mat)
+	#pData(subset)$PC1 <- PCA$rotation[,1] 
+	#pData(subset)$PC2 <- PCA$rotation[,2]
 
-	require("Rtsne")
-	set.seed(123)
-	tsne <- Rtsne(t(mat), perplexity=10)
-	pData(subset)$Tsne1 <- tsne$Y[,1]
-	pData(subset)$Tsne2 <- tsne$Y[,2]
+	#require("Rtsne")
+	#set.seed(123)
+	#tsne <- Rtsne(t(mat), perplexity=10)
+	#pData(subset)$Tsne1 <- tsne$Y[,1]
+	#pData(subset)$Tsne2 <- tsne$Y[,2]
 
-	require("destiny")
-	set.seed(1)
-	dm <- DiffusionMap(t(mat))
-	pData(subset)$DM1 <- eigenvectors(dm)[,1]
-	pData(subset)$DM2 <- eigenvectors(dm)[,2]
-	pData(subset)$DM3 <- eigenvectors(dm)[,3]
+	#require("destiny")
+	#set.seed(1)
+	#dm <- DiffusionMap(t(mat))
+	#pData(subset)$DM1 <- eigenvectors(dm)[,1]
+	#pData(subset)$DM2 <- eigenvectors(dm)[,2]
+	#pData(subset)$DM3 <- eigenvectors(dm)[,3]
 	saveRDS(subset, file=paste(as.character(ty), args[3], "QCed_BatchCor_DimRed.rds", sep="_"))
 }

@@ -14,8 +14,8 @@ gene_lists <- load_CC("all")
 cellcycle <- gene_lists$Whitfield
 cellcycle_simple <- gene_lists$Simple
 GO_genes <- gene_lists$G0
-Quiescence <- gene_list$Quiescence
-new_cellcycle <- gene_list$Tirosh
+Quiescence <- gene_lists$Quiescence
+new_cellcycle <- gene_lists$Tirosh
 #cellcycle <- read.table("~/Data/Whitfield_CC.txt")
 #cellcycle_simple <- as.matrix(cellcycle[cellcycle[,1] != "CC",])
 #cellcycle_simple[cellcycle_simple[,1] == "G2",1] = "G2M";

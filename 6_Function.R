@@ -1,10 +1,14 @@
 # GO enrichments of markers
 # External markers
 # diff CC phase of same functional cell-type?
+source("/nfs/users/nfs_t/ta6/Collaborations/LiverOrganoids/Laura_Pipeline/0_ColourScheme.R")
+source("/nfs/users/nfs_t/ta6/R-Scripts/Blank_plot.R")
 
 args <- commandArgs(trailingOnly=TRUE) # SCE RDSs
 nSCEs <- length(args)
 expr_type <- "lognorm"
+
+type_col <- type_col[1:nSCEs]
 
 SCE_list <- list();
 keep_genes <- c()
@@ -39,12 +43,13 @@ for (i in 1:nSCEs) {
 #	markers1 <- markers1[order(markers1$AUC, descending=TRUE),]
 	obj <- obj[, pData(obj)$clusters_clean != "Outliers"]
 	markers1 <- complex_markers(get_exprs(obj, expr_type), factor(pData(obj)$clusters_clean), n_max=1)
-	markers1 <- markers1[order(markers1$AUC, decreasing=TRUE),]
-	markers1 <- markers1[ markers1$q.value < 0.05 & markers1$q.value >= 0 , ]
-	m <- markers1[match(rownames(obj), rownames(markers1)),]
-	colnames(m) <- paste("Markers_N1", colnames(m), sep="_")
+	m <- markers1[match(rownames(obj_orig), rownames(markers1)),]
+	colnames(m) <- paste("Markers_Clean", colnames(m), sep="_")
 	fData(obj_orig) <- cbind(fData(obj_orig), m)
 	SCE_list[[i]] <- obj_orig;
+
+	markers1 <- markers1[order(markers1$AUC, decreasing=TRUE),]
+	markers1 <- markers1[ markers1$q.value < 0.05 & markers1$q.value >= 0 , ]
 	
 	# get gene list
 
@@ -65,6 +70,7 @@ for (i in 1:nSCEs) {
 		# remove hpa low
 		exclude <- enrichments$domain == "hpa" & grepl("Low", enrichments$term.name)
 		exclude <- exclude | enrichments$domain == "hpa" & grepl("Not detected", enrichments$term.name)
+		exclude <- exclude | enrichments$domain == "hpa" & grepl("Uncertain", enrichments$term.name)
 		enrichments <- enrichments[!exclude,]
 		enrichments <- enrichments[1:min(nrow(enrichments), n_top_rich),]
 		enrichments$GroupID = rep(group, times=nrow(enrichments))
@@ -81,7 +87,7 @@ for (i in 1:nSCEs) {
 		top_marker_table <- rbind(top_marker_table, get_top_markers(g))
 		Rich_table <- rbind(Rich_table, get_richments(g))
 	}	
-	write.table( Rich_table, file=paste(names(SCE_list)[i], "marker_GOrich.txt", sep="_"))
+	write.table(Rich_table, file=paste(names(SCE_list)[i], "marker_GOrich.txt", sep="_"))
 	write.table(top_marker_table, file=paste(names(SCE_list)[i], "TopMarkerTable.txt", sep="_"))
 }
 
@@ -153,12 +159,16 @@ All_MSC <- All_MSC[!All_MSC %in% exclude]
 
 for (i in 1:nSCEs) {
 	obj <- SCE_list[[i]]
-	fData(obj)$MType <- rep("", times=nrow(obj));
-	fData(obj)$MType[fData(obj)$Symbol %in% All_Hepato] <- "Hepato"
-	fData(obj)$MType[fData(obj)$Symbol %in% All_Chol] <- "Chol"
-	fData(obj)$MType[fData(obj)$Symbol %in% All_Stem] <- "Stem"
-	fData(obj)$MType[fData(obj)$Symbol %in% All_MSC] <- "MSC"
-	fData(obj)$MType[fData(obj)$Symbol %in% All_CC] <- "CC"
+	fData(obj)$MarkCellType <- rep("", times=nrow(obj));
+	fData(obj)$MarkCellType[fData(obj)$Symbol %in% All_Hepato] <- "Hepato"
+	fData(obj)$MarkCellType[fData(obj)$Symbol %in% All_Chol] <- "Chol"
+	fData(obj)$MarkCellType[fData(obj)$Symbol %in% All_Stem] <- "Stem"
+	fData(obj)$MarkCellType[fData(obj)$Symbol %in% All_MSC] <- "MSC"
+	fData(obj)$MarkCellType[fData(obj)$Symbol %in% All_CC] <- "CC"
+
+	fData(obj)$MarkCellType2[fData(obj)$Symbol %in% Good_Hepato] <- "Hepato"
+	fData(obj)$MarkCellType2[fData(obj)$Symbol %in% Good_Chol] <- "Chol"
+	fData(obj)$MarkCellType2[fData(obj)$Symbol %in% Good_Stem] <- "Stem"
 	SCE_list[[i]] <- obj;
 }
 
@@ -248,25 +258,124 @@ all_plot <- function(gene) {
 }
 
 # Or is this more informative:
-i = 1
-obj <- SCE_list[[i]]
-Hep_score <- colSums(get_exprs(obj, expr_type)[fData(obj)$Symbol %in% Good_Hepato,])
-Chol_score <- colSums(get_exprs(obj, expr_type)[fData(obj)$Symbol %in% Good_Chol,])
-Stem_score <- colSums(get_exprs(obj, expr_type)[fData(obj)$Symbol %in% Good_Stem,])
-i = 2
-obj <- SCE_list[[i]]
-Hep_score<- c(Hep_score, colSums(get_exprs(obj, expr_type)[fData(obj)$Symbol %in% Good_Hepato,]))
-Chol_score<- c(Chol_score, colSums(get_exprs(obj, expr_type)[fData(obj)$Symbol %in% Good_Chol,]))
-Stem_score<- c(Stem_score, colSums(get_exprs(obj, expr_type)[fData(obj)$Symbol %in% Good_Stem,]))
-i = 3
-obj <- SCE_list[[i]]
-Hep_score<- c(Hep_score, colSums(get_exprs(obj, expr_type)[fData(obj)$Symbol %in% Good_Hepato,]))
-Chol_score<- c(Chol_score, colSums(get_exprs(obj, expr_type)[fData(obj)$Symbol %in% Good_Chol,]))
-Stem_score<- c(Stem_score, colSums(get_exprs(obj, expr_type)[fData(obj)$Symbol %in% Good_Stem,]))
-donor_id <- rep(names(SCE_list),  times=c(ncol(SCE_list[[1]]), ncol(SCE_list[[2]]), ncol(SCE_list[[3]])))
-plot(Stem_score, Hep_score, col=c("forestgreen", "purple", "black")[factor(donor_id)], pch=16)
-plot(Chol_score, Hep_score, col=c("forestgreen", "purple", "black")[factor(donor_id)], pch=16)
-plot(Chol_score, Stem_score, col=c("forestgreen", "purple", "black")[factor(donor_id)], pch=16)
-plot(Hep_score-Chol_score, Stem_score, col=c("forestgreen", "purple", "black")[factor(donor_id)], pch=16, xlab="chol - hepa", ylab="stem-ness")
+Hep_score <- vector()
+Chol_score <- vector()
+Stem_score <- vector()
+donor_id <- vector()
+for (i in 1:length(SCE_list)) {
+	obj <- SCE_list[[i]]
+	H_score <- colSums(get_exprs(obj, expr_type)[fData(obj)$Symbol %in% Good_Hepato,])
+	C_score <- colSums(get_exprs(obj, expr_type)[fData(obj)$Symbol %in% Good_Chol,])
+	S_score <- colSums(get_exprs(obj, expr_type)[fData(obj)$Symbol %in% Good_Stem,])
+	pData(obj)$ScoreHep <- H_score
+	pData(obj)$ScoreChol <- C_score
+	pData(obj)$ScoreStem <- S_score
+	SCE_list[[i]] <- obj;
+	Hep_score <- c(Hep_score, H_score)
+	Chol_score <- c(Chol_score, C_score)
+	Stem_score <- c(Stem_score, S_score)
+	donor_id <- c(donor_id, rep(names(SCE_list)[i], times=ncol(obj)))
+}
 
+dataset_names <- names(SCE_list); dataset_names <- matrix(unlist(strsplit(dataset_names, "_")), ncol=2, byrow=TRUE)[,1];
+
+#plot(Stem_score, Hep_score, col=c("forestgreen", "purple", "black")[factor(donor_id)], pch=16)
+#plot(Chol_score, Hep_score, col=c("forestgreen", "purple", "black")[factor(donor_id)], pch=16)
+#plot(Chol_score, Stem_score, col=c("forestgreen", "purple", "black")[factor(donor_id)], pch=16)
+png("All_CellType_Scores.png", width=7, height=7, units="in", res=300)
+layout(matrix(c(1,2,1,2), nrow=2, byrow=TRUE), widths=c(6,1))
+par(mar=c(4,4,1,1))
+plot(Chol_score-Hep_score, Stem_score, col=type_col[factor(donor_id)], pch=16, xlab="hepatocyte ----- cholangiocyte", ylab="stem-ness")
+reset_mar <- blank_plot()
+legend("right", levels(factor(dataset_names)), pch=16, col=type_col, bty="n")
+par(mar=reset_mar);
+dev.off()
+
+### Lineage Score v2 ###
+Chol_lineage <- read.table("/nfs/users/nfs_t/ta6/Collaborations/LiverOrganoids/Markers_130418_Chol.txt", header=TRUE)
+Hep_lineage <- read.table("/nfs/users/nfs_t/ta6/Collaborations/LiverOrganoids/Markers_130418_Hep.txt", header=TRUE)
+
+# Remove overlapping markers
+exclude <- Hep_lineage[(Hep_lineage[Hep_lineage[,2] != "Prog",1] %in% Chol_lineage[Chol_lineage[,2] != "Prog",1]),1]
+common_stem <- Hep_lineage[(Hep_lineage[Hep_lineage[,2] == "Prog",1] %in% Chol_lineage[Chol_lineage[,2] == "Prog",1]),1]
+write.table(common_stem, "Common_Stem.txt")
+
+Chol_lineage <- Chol_lineage[!Chol_lineage[,1] %in% exclude, ]
+Hep_lineage <- Hep_lineage[! Hep_lineage[,1] %in% exclude, ]
+Chol_lineage[,2] <- factor(Chol_lineage[,2], levels=c("Prog", "Chol"))
+Hep_lineage[,2] <- factor(Hep_lineage[,2], levels=c("Prog", "Hep"))
+
+lin_keep="";
+for (i in 1:length(SCE_list)) {
+	obj <- SCE_list[[i]]
+	lin_keep <- c(lin_keep, as.character(fData(obj)$Symbol[fData(obj)$fine_marker_q.value < 0.05 & fData(obj)$fine_marker_AUC > 0.6]))
+}
+lin_keep <- unique(lin_keep)
+control_genes <- keep_genes[!keep_genes %in% lin_keep]
+
+Chol_lineage <- Chol_lineage[Chol_lineage[,1] %in% lin_keep,]
+Hep_lineage <- Hep_lineage[Hep_lineage[,1] %in% lin_keep,]
+
+for (i in 1:length(SCE_list)) {
+	require("matrixStats")
+	obj <- SCE_list[[i]]
+	mat <- get_exprs(obj, "lognorm")
+	Cholm <- fData(obj)$Symbol %in% Chol_lineage[Chol_lineage[,2] =="Chol",1]
+	Cholp <- fData(obj)$Symbol %in% Chol_lineage[Chol_lineage[,2] =="Prog",1]
+	Hepm <- fData(obj)$Symbol %in% Hep_lineage[Hep_lineage[,2] =="Hep",1]
+	Hepp <- fData(obj)$Symbol %in% Hep_lineage[Hep_lineage[,2] =="Prog",1]
+	common_prog <- fData(obj)$Symbol %in% common_stem
+	Cholm <- colMeans(mat[Cholm,]);
+	Cholp <- colMeans(mat[Cholp,]);
+	Hepm <- colMeans(mat[Hepm,]); 
+	Hepp <- colMeans(mat[Hepp,]); 
+	common_prog <- colMeans(mat[common_prog,]); 
+	control <- colMeans(mat[fData(obj)$Symbol %in% control_genes,])
+
+	pData(obj)$lin_score_Chol <- Cholm
+	pData(obj)$lin_score_Hep <- Hepm
+	pData(obj)$lin_score_Chol_Prog <- Cholp
+	pData(obj)$lin_score_Hep_Prog <- Hepp
+	pData(obj)$Lineage_x <- Cholm/Cholp; pData(obj)$Lineage_x[Hepm > Cholm] <- (-Hepm/Hepp)[Hepm > Cholm];
+	pData(obj)$Lineage_y <- (Cholp+Hepp)/2
+
+	cluster_col_set <- get_group_cols(obj)
+
+	png(paste(names(SCE_list)[i], "Lineage.png", sep="_"), width=8, height=4.5, units="in", res=300)
+	par(mfrow=c(1,2))
+	par(mar=c(4,4,1,1))
+	plot(pData(obj)$lin_score_Chol, pData(obj)$lin_score_Chol_Prog, xlab="Chol Mature", ylab="Chol Prog", col=cluster_col_set[obj$clusters_clean], pch=16)
+	plot(pData(obj)$lin_score_Hep, pData(obj)$lin_score_Hep_Prog, xlab="Hep Mature", ylab="Hep Prog", col=cluster_col_set[obj$clusters_clean], pch=16)
+	dev.off()
+
+	SCE_list[[i]] <- obj;
+}
+
+Linx <- vector()
+Liny <- vector()
+donor_id <- vector()
+for (i in 1:length(SCE_list)) {
+        obj <- SCE_list[[i]]
+        Linx <- c(Linx, pData(obj)$Lineage_x)
+        Liny <- c(Liny, pData(obj)$Lineage_y)
+        donor_id <- c(donor_id, rep(names(SCE_list)[i], times=ncol(obj)))
+}
+
+dataset_names <- names(SCE_list); dataset_names <- matrix(unlist(strsplit(dataset_names, "_")), ncol=2, byrow=TRUE)[,1];
+
+png("All_Lineage.png", width=8/1.2, height=7/1.2, units="in", res=300)
+layout(matrix(c(1,2,1,2), nrow=2, byrow=TRUE), widths=c(6,1))
+par(mar=c(4,4,1,1))
+plot(Linx, Liny, col=type_col[factor(donor_id)], pch=16, xlab="hepatocyte ----- cholangiocyte", ylab="stem-ness")
+reset_mar <- blank_plot()
+legend("right", levels(factor(dataset_names)), pch=16, col=type_col, bty="n")
+par(mar=reset_mar);
+dev.off()
+
+	
+
+
+for (i in 1:length(SCE_list)) {
+	saveRDS(SCE_list[[i]], file=paste(names(SCE_list)[i], "Function.rds", sep="_"))
+}
 

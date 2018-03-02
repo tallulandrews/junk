@@ -1,12 +1,20 @@
-source("~/Collaborations/LiverOrganoids/Laura_Pipeline/0_ColourScheme.R")
 
 args <- commandArgs(trailingOnly=TRUE) # rds file for data, prefix for output, number of cores
+
+source("~/Collaborations/LiverOrganoids/Laura_Pipeline/0_ColourScheme.R")
+source("~/Collaborations/LiverOrganoids/Laura_Pipeline/99_Functions.R")
+
 n.cores = args[3];
 outprefix = args[2];
 expr_type <- "lognorm"
 k_min = 4
 if (length(args) > 3) {
 	expr_type = args[4];
+}
+if (length(args) > 4) {
+	CC_rm = args[5];
+} else {
+	CC_rm=FALSE
 }
 
 require("scater")
@@ -22,6 +30,13 @@ max_ks <- ceiling(dim(SCE)[2]/25)
 require("SC3")
 
 SCE_orig <- SCE
+
+# Optional : remove CC
+if (CC_rm) {
+	CC_genes <- load_CC("cycling")
+	CC_genes <- c(as.character(CC_genes$Whitfield[,2]), as.character(CC_genes$Tirosh[,1]))
+	SCE <- SCE[!( fData(SCE)$feature_symbol %in% CC_genes ),]
+}
 
 # SCE Clustering
 exprs(SCE) <- get_exprs(SCE, expr_type)
@@ -40,61 +55,11 @@ print("SC3 - finished")
 # Algorithmicly select k
 # save best k clusters
 
-my_clustering <- function(SCE, k, suppress.plot=TRUE) {
-	require("CellTypeProfiles")
-	
-	consensus_mat <- SCE@sc3$consensus[[k]]
-        consensus_mat <- consensus_mat[[1]]
-        distances <- as.dist(1-consensus_mat)
-        Cs <- cutree(hclust(distances, method="complete"), k=as.numeric(k))
-        Cs2 <- cutree(hclust(distances, method="complete"), h=1-10^-10)
-	if (max(Cs2) > max(Cs)) {Cs <-Cs2}
 
-	Cns <- CellTypeProfiles::factor_counts(factor(Cs))
 
-	if (!suppress.plot) {
-		palette <- cluster_col(max(Cs))
-		require("gplots")
-		heatmap.2(consensus_mat, distfun=function(x){as.dist(1-x)}, hclustfun=function(x){hclust(x, method="complete")},
-			trace="none", ColSideColors=palette[Cs])
-	}
-
-	require("cluster")
-	sil <- cluster::silhouette(Cs, distances)
-	#m <- mean(sil[,3])
-	#s <- sd(sil[,3])
-	#p <- p.adjust(pnorm(abs(sil[,3]-m)/s, lower.tail=FALSE), method="fdr")
-	silhouettes <- mean(sil[,3])
-	neighbours <- table(sil[,1], sil[,2])/Cns
-
-	sets <- split(seq(length(Cs)), factor(Cs))
-        score <- sapply(sets, function(a) {mean(consensus_mat[a,a]) - mean(consensus_mat[a,-a])})
-        scores <- sum(score*Cns)/ncol(consensus_mat)
-
-	return(list(sil_nn=neighbours, c_scores=score, overallSil=silhouettes, overallScore=scores, Cs=Cs));
-}
-
-# Overall cluster scores at each k
-silhouettes <- vector()
-scores <- vector()
-
-for (i in names(SCE@sc3$consensus)) {
-	clust_name <- paste("sc3", i, "clusters", sep="_");
-	stuff <- my_clustering(SCE, i)
-
-	pData(SCE)[,clust_name] <- stuff$Cs;
-
-	silhouettes <- c(silhouettes, stuff$overallSil)
-	scores <- c(scores, stuff$overallScore)
-}
-
-composite_score <- apply(cbind(silhouettes, scores), 1, min);
-optimal_k <- which(composite_score == max(composite_score))+1 # Select optimal K
-fine_k <- optimal_k
-if (optimal_k < k_min) {
-	composite_score[optimal_k-1] = 0
-	fine_k <- which(composite_score == max(composite_score))+1
-}
+Ks <- get_optimal_k(SCE)
+optimal_k <- Ks$optim
+fine_k <- Ks$fine
 
 print("optimal k found")
 
@@ -102,13 +67,43 @@ png(paste(outprefix, "k", optimal_k, "SC3_consensus.png", sep="_"), width=7, hei
 out <- my_clustering(SCE, as.character(optimal_k), suppress.plot=FALSE)
 dev.off()
 
-pData(SCE_orig)$clusters_coarse <- factor(out$Cs); # Save optimal K clusters
+require("CellTypeProfiles")
+source("/nfs/users/nfs_t/ta6/NetworkInferencePipeline/Dropouts/My_R_packages/CellTypeProfiles/R/Markers.R")
+if (!CC_rm) {
+	pData(SCE_orig)$clusters_coarse <- factor(out$Cs); # Save optimal K clusters
+	markers_coarse <- complex_markers(get_exprs(SCE_orig, expr_type), pData(SCE_orig)$clusters_coarse)
+	markers_coarse$is.Feature <- markers_coarse$q.value < 0.05 & markers_coarse$q.value >= 0 & markers_coarse$AUC > 0.7
+	colnames(markers_coarse) <- paste("coarse_marker", colnames(markers_coarse), sep="_");
+} else {
+	pData(SCE_orig)$clusters_noCC_coarse <- factor(out$Cs)
+	markers_coarse <- complex_markers(get_exprs(SCE_orig, expr_type), pData(SCE_orig)$clusters_noCC_coarse)
+	markers_coarse$is.Feature <- markers_coarse$q.value < 0.05 & markers_coarse$q.value >= 0 & markers_coarse$AUC > 0.7
+	colnames(markers_coarse) <- paste("noCC_coarse_marker", colnames(markers_coarse), sep="_");
+}
+
+identical(rownames(markers_coarse), rownames(fData(SCE_orig)))
+fData(SCE_orig) <- cbind(fData(SCE_orig), markers_coarse)
+
 
 png(paste(outprefix, "k", fine_k, "SC3_consensus.png", sep="_"), width=7, height=7, units="in", res=300)
 out <- my_clustering(SCE, as.character(fine_k), suppress.plot=FALSE)
 dev.off()
 
-pData(SCE_orig)$clusters_fine <- factor(out$Cs); # Save optimal K clusters
+if (!CC_rm) {
+	pData(SCE_orig)$clusters_fine <- factor(out$Cs); # Save optimal K clusters
+	markers_fine <- complex_markers(get_exprs(SCE_orig, expr_type), pData(SCE_orig)$clusters_fine)
+	markers_fine$is.Feature <- markers_fine$q.value < 0.05 & markers_fine$q.value >= 0 & markers_fine$AUC > 0.7
+	markers_refinement <- markers_fine
+	colnames(markers_fine) <- paste("fine_marker", colnames(markers_fine), sep="_");
+} else {
+	pData(SCE_orig)$clusters_noCC_fine <- factor(out$Cs); # Save optimal K clusters
+	markers_fine <- complex_markers(get_exprs(SCE_orig, expr_type), pData(SCE_orig)$clusters_noCC_fine)
+	markers_fine$is.Feature <- markers_fine$q.value < 0.05 & markers_fine$q.value >= 0 & markers_fine$AUC > 0.7
+	markers_refinement <- markers_fine
+	colnames(markers_fine) <- paste("noCC_fine_marker", colnames(markers_fine), sep="_");
+}
+identical(rownames(markers_fine), rownames(fData(SCE_orig)))
+fData(SCE_orig) <- cbind(fData(SCE_orig), markers_fine)
 
 
 ## Refine Clusters ##
@@ -116,86 +111,26 @@ pData(SCE_orig)$clusters_fine <- factor(out$Cs); # Save optimal K clusters
 # save refined clusters
 
 # Calculate Markers
-require("CellTypeProfiles")
-
-markers <- complex_markers(get_exprs(SCE, expr_type), pData(SCE_orig)$clusters_fine)
-sig <- markers[markers$q.value < 0.05 & markers$q.value > 0,]
-good <- sig[sig$AUC > 0.7,]
-
-assigned <- good[,-c(1, ncol(good), ncol(good)-1)]
-a_names <- colnames(assigned)
-assigned <- t(apply(assigned, 1, function(a){
-		a <- as.numeric(a)
-		if (mean(a) > 0.5){return (1-a)}
-		else {return(a)}
-		}))
-colnames(assigned) <- a_names
-
-print("markers calculated")
-
-# Unique vs Shared Markers
-key_markers <- assigned[rowSums(assigned) == 1,]
-shared_markers <- assigned[rowSums(assigned) > 1,]
-# How evenly are they spread?
-expected <- qbinom(0.05/ncol(assigned), size=nrow(key_markers), prob=1/ncol(key_markers))
-# How big are the clusters?
-nCs <- factor_counts(pData(SCE_orig)$clusters_fine)
-min_C_size <- ncol(SCE)*0.05
-
-keepC <- colnames(assigned)[colSums(key_markers) > expected] # lots of unique markers == real
-
-# Do the Refining
-allC <- as.character(levels(pData(SCE_orig)$clusters_fine))
-rawCs <- as.character(pData(SCE_orig)$clusters_fine)
-newCs <- rawCs
-for(i in allC) {
-	new <- i
-	if (nCs[as.numeric(i)] == 1) {
-		new <- "Outliers"
-		newCs[rawCs==i] <- new[1];
-		next;
-	}
-	# Small & cohesive = outliers
-	if (min_C_size > nCs[as.numeric(i)] & out$c_scores[as.numeric(i)] >= min(out$c_scores[as.numeric(keepC)])) {
-		new <- "Outliers"
-	} 
-	if ( !(i %in% keepC) ) {
-		# if more cohesive than a keptC keep it too
-		if (out$c_scores[as.numeric(i)] > min(out$c_scores[as.numeric(keepC)])) {
-                        new <- i
-                } else {
-			# Proportion of shared markers that are shared with cluster X
-			this_C_markers <- shared_markers[,colnames(shared_markers) == i] == 1
-			m_score <- colSums(shared_markers[this_C_markers,])/sum(this_C_markers)
-			m_score[colnames(shared_markers) == i] <- 0
-			# Proportion of cells where the next closest cluster is cluster X
-			sil_score <- out$sil_nn[as.numeric(i),]
-
-			m_closest <- names(m_score)[m_score == max(m_score)]
-			sil_closest <- names(sil_score)[sil_score == max(sil_score)]
-
-			if ( length(intersect(m_closest, sil_closest)) == 1) {
-				# Aggreement on closest cluster
-				if (max(m_score) > 0.5 & max(sil_score) > 0.75) {
-					# similar enough to be equivalent
-					new <- unique(newCs[rawCs==intersect(m_closest, sil_closest)])
-				}
-			} else {
-				if (min_C_size > nCs[as.numeric(i)]) {
-					new <- "Outliers"
-				}
-			}
-		}
-	}
-	newCs[rawCs==i] <- new[1];
+#refinement <- refine_clusters(SCE_orig, SCE, expr_type)
+if (!CC_rm) {
+	refinement <- refine_clusters(SCE, expr_type, pData(SCE_orig)$clusters_fine, markers_refinement)
+} else {
+	refinement <- refine_clusters(SCE, expr_type, pData(SCE_orig)$clusters_noCC_fine, markers_refinement)
 }
+newCs <- refinement$newCs
+#markers <- refinement$markers
 
 print("clusters refined")
 
-pData(SCE_orig)$clusters_clean <- factor(newCs);
+if (!CC_rm) {
+	pData(SCE_orig)$clusters_clean <- factor(newCs);
+} else {
+	pData(SCE_orig)$clusters_noCC_clean <- factor(newCs);
+}
 
-identical(rownames(markers), rownames(fData(SCE_orig)))
-colnames(markers) <- paste("fine_marker", colnames(markers), sep="_");
-fData(SCE_orig) <- cbind(fData(SCE_orig), markers)
+
+#identical(rownames(markers), rownames(fData(SCE_orig)))
+#colnames(markers) <- paste("fine_marker", colnames(markers), sep="_");
+#fData(SCE_orig) <- cbind(fData(SCE_orig), markers)
 
 saveRDS(SCE_orig, file=paste(outprefix,"SC3.rds", sep="_"))

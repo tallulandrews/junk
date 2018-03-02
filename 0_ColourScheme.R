@@ -13,7 +13,15 @@ prolif_col = c("black", "red")
 CC_col = c("grey50", "black", brewer.pal(3, "PuOr")[-2]); names(CC_col) = c("None", "G0", "G1/S", "G2/M");
 
 get_group_cols <- function(SCE) {
-	group_cols <- c(cluster_col(max(as.numeric(pData(SCE)$clusters_fine))), "grey50")
-	names(group_cols) <- c(as.character(1:max(as.numeric(pData(SCE)$clusters_fine))),"Outliers")
-	return(group_cols);
+	if (class(SCE) == "SingleCellExperiment") {
+		require("SingleCellExperiment")
+		group_cols <- c(cluster_col(max(as.numeric(colData(SCE)$clusters_fine))), "grey50")
+		names(group_cols) <- c(as.character(1:max(as.numeric(colData(SCE)$clusters_fine))),"Outliers")
+		return(group_cols);
+	} else {
+		require("scater")
+		group_cols <- c(cluster_col(max(as.numeric(pData(SCE)$clusters_fine))), "grey50")
+		names(group_cols) <- c(as.character(1:max(as.numeric(pData(SCE)$clusters_fine))),"Outliers")
+		return(group_cols);
+	}
 }

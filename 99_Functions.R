@@ -1,12 +1,26 @@
-my_clustering <- function(SCE, k, suppress.plot=TRUE) {
-	require("CellTypeProfiles")
-	
-	consensus_mat <- SCE@sc3$consensus[[k]]
+my_get_clusters <- function(consensus, k) {
+	consensus_mat <- SCE@sc3$consensus[[as.character(k)]]
         consensus_mat <- consensus_mat[[1]]
         distances <- as.dist(1-consensus_mat)
         Cs <- cutree(hclust(distances, method="complete"), k=as.numeric(k))
         Cs2 <- cutree(hclust(distances, method="complete"), h=1-10^-10)
-	if (max(Cs2) > max(Cs)) {Cs <-Cs2}
+        if (max(Cs2) > max(Cs)) {Cs <-Cs2}
+	return(Cs)
+}
+
+my_clustering <- function(SCE, k, suppress.plot=TRUE) {
+	require("CellTypeProfiles")
+	
+	
+	consensus_mat <- SCE@sc3$consensus[[k]]
+        consensus_mat <- consensus_mat[[1]]
+        distances <- as.dist(1-consensus_mat)
+	Cs <- my_get_clusters(SCE@sc3$consensus, k);
+
+        #distances <- as.dist(1-consensus_mat)
+        #Cs <- cutree(hclust(distances, method="complete"), k=as.numeric(k))
+        #Cs2 <- cutree(hclust(distances, method="complete"), h=1-10^-10)
+	#if (max(Cs2) > max(Cs)) {Cs <-Cs2}
 
 	Cns <- CellTypeProfiles::factor_counts(factor(Cs))
 
@@ -45,22 +59,30 @@ get_optimal_k <- function(SCE) {
 		silhouettes <- c(silhouettes, stuff$overallSil)
 		scores <- c(scores, stuff$overallScore)
 	}
+	stability <- vector()
+	for (i in names(SCE@sc3$consensus)) {
+		stability <- c(stability, calculate_stability(SCE, i)$overall)
+	}
 
-	composite_score <- apply(cbind(silhouettes, scores), 1, min);
+	t1 <- silhouettes-min(silhouettes); t1 <- t1/max(t1)
+	t2 <- scores-min(scores); t2 <- t2/max(t2)
+	t3 <- stability-min(stability); t3 <- t3/max(t3)
+	composite_score <- apply(cbind(t1, t2), 1, min);
+	composite_score2 <- apply(cbind(t1, t2, t3), 1, min);
 	optimal_k <- which(composite_score == max(composite_score))+1 # Select optimal K
 	fine_k <- optimal_k
 	if (optimal_k < k_min) {
-		composite_score[optimal_k-1] = 0
-		fine_k <- which(composite_score == max(composite_score))+1
+		#composite_score[optimal_k-1] = 0
+		fine_k <- which(composite_score2 == max(composite_score2))+1
 	}
 	return(list(optim = optimal_k, fine = fine_k))
 }
 
 
-refine_clusters <- function(SCE, expr_type, lim.AUC=0.7, lim.size_pct=5, lim.expect_bernoulli=0.05, lim.sil=0.75, lim.markers=0.5) {
+refine_clusters <- function(SCE, expr_type, clusters, markers, lim.AUC=0.7, lim.size_pct=5, lim.expect_bernoulli=0.05, lim.sil=0.75, lim.markers=0.4) {
 	require("CellTypeProfiles")
 
-	markers <- complex_markers(get_exprs(SCE, expr_type), pData(SCE_orig)$clusters_fine)
+	#markers <- complex_markers(get_exprs(SCE, expr_type), pData(SCE_orig)$clusters_fine)
 	sig <- markers[markers$q.value < 0.05 & markers$q.value > 0,]
 	good <- sig[sig$AUC > lim.AUC,]
 
@@ -81,14 +103,14 @@ refine_clusters <- function(SCE, expr_type, lim.AUC=0.7, lim.size_pct=5, lim.exp
 	# How evenly are they spread?
 	expected <- qbinom(lim.expect_bernoulli/ncol(assigned), size=nrow(key_markers), prob=1/ncol(key_markers))
 	# How big are the clusters?
-	nCs <- factor_counts(pData(SCE_orig)$clusters_fine)
+	nCs <- factor_counts(clusters)
 	min_C_size <- ncol(SCE)*lim.size_pct/100
 
 	keepC <- colnames(assigned)[colSums(key_markers) > expected] # lots of unique markers == real
 
 	# Do the Refining
-	allC <- as.character(levels(pData(SCE_orig)$clusters_fine))
-	rawCs <- as.character(pData(SCE_orig)$clusters_fine)
+	allC <- as.character(levels(clusters))
+	rawCs <- as.character(clusters)
 	newCs <- rawCs
 	for(i in allC) {
 		new <- i
@@ -103,9 +125,9 @@ refine_clusters <- function(SCE, expr_type, lim.AUC=0.7, lim.size_pct=5, lim.exp
 		} 
 		if ( !(i %in% keepC) ) {
 			# if more cohesive than a keptC keep it too
-			if (out$c_scores[as.numeric(i)] > min(out$c_scores[as.numeric(keepC)])) {
-	                        new <- i
-	                } else {
+			#if (out$c_scores[as.numeric(i)] > min(out$c_scores[as.numeric(keepC)])) {
+	                #        new <- i
+	                #} else {
 				# Proportion of shared markers that are shared with cluster X
 				this_C_markers <- shared_markers[,colnames(shared_markers) == i] == 1
 				m_score <- colSums(shared_markers[this_C_markers,])/sum(this_C_markers)
@@ -127,7 +149,7 @@ refine_clusters <- function(SCE, expr_type, lim.AUC=0.7, lim.size_pct=5, lim.exp
 						new <- "Outliers"
 					}
 				}
-			}
+			#}
 		}
 		newCs[rawCs==i] <- new[1];
 	}
@@ -151,3 +173,40 @@ load_CC <- function(set="all") {
 	}
 }
 
+
+calculate_stability <- function(SCE, k) {
+    #hc <- consensus[[as.character(k)]]$hc
+    #labs <- reindex_clusters(hc, k)
+    
+    clust_name <- paste("sc3", k, "clusters", sep="_");
+    labs <- pData(SCE)[,clust_name]
+    labs <- as.numeric(labs);
+    names(labs) <- colnames(SCE)
+    Cns <- CellTypeProfiles::factor_counts(factor(labs))
+    
+    ks <- as.numeric(names(SCE@sc3$consensus))
+    kRange <- length(ks)
+    
+    stability <- rep(0, max(labs))
+    
+    for (i in 1:max(labs)) {
+        inds <- names(labs[labs == i])
+        # sum over k range
+        for (k2 in ks) {
+            if (k2 != k) {
+    		clust_name2 <- paste("sc3", k2, "clusters", sep="_");
+		labs2 <- as.numeric(pData(SCE)[,clust_name2])
+		names(labs2) <- colnames(SCE)
+                clusts <- as.numeric(names(table(labs2[names(labs2) %in% inds])))
+                N <- length(clusts)
+                # sum over new clusters, taking into account new cells from other clusters
+                for (j in clusts) {
+                  inds2 <- names(labs2[labs2 == j])
+                  s <- length(inds[inds %in% inds2])/length(inds2)/N/N/kRange
+                  stability[i] <- stability[i] + s
+                }
+            }
+        }
+    }
+    return(list(per_cluster=stability, overall=sum(Cns*stability)/sum(Cns)))
+}
