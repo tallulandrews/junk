@@ -1,3 +1,5 @@
+
+
 my_get_clusters <- function(consensus, k) {
 	consensus_mat <- SCE@sc3$consensus[[as.character(k)]]
         consensus_mat <- consensus_mat[[1]]
@@ -210,3 +212,17 @@ calculate_stability <- function(SCE, k) {
     }
     return(list(per_cluster=stability, overall=sum(Cns*stability)/sum(Cns)))
 }
+
+remove_cell_cycle <- function(SCE) {
+	CC_genes <- load_CC("cycling")
+	CC_genes <- c(as.character(CC_genes$Whitfield[,2]), as.character(CC_genes$Tirosh[,1]))
+	SCE <- SCE[!( fData(SCE)$Symbol %in% CC_genes ),]
+	GO_cc <- read.delim("/lustre/scratch117/cellgen/team218/TA/Mirrored_Annotations/GO/hsapiens_80_GO_Annoations_Emsembl.out", sep="\t", header=F)
+	GO_cc <- GO_cc[GO_cc[,3] == "cell cycle",1]
+	olap <- rownames(SCE) %in% GO_cc
+	if (sum(olap) > 0) {
+		SCE <- SCE[!( olap ),]
+	}
+	return(SCE)
+}
+

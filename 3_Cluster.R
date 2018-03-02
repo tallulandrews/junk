@@ -10,11 +10,19 @@ expr_type <- "lognorm"
 k_min = 4
 if (length(args) > 3) {
 	expr_type = args[4];
+} else {
+	expr_type = "lognorm"
 }
+
 if (length(args) > 4) {
-	CC_rm = args[5];
+	CC_rm = as.logical(args[5]);
 } else {
 	CC_rm=FALSE
+}
+
+
+if (CC_rm) {
+	outprefix <- paste(outprefix, "noCC", sep="_")
 }
 
 require("scater")
@@ -33,9 +41,7 @@ SCE_orig <- SCE
 
 # Optional : remove CC
 if (CC_rm) {
-	CC_genes <- load_CC("cycling")
-	CC_genes <- c(as.character(CC_genes$Whitfield[,2]), as.character(CC_genes$Tirosh[,1]))
-	SCE <- SCE[!( fData(SCE)$feature_symbol %in% CC_genes ),]
+	SCE <- remove_cell_cycle(SCE)
 }
 
 # SCE Clustering
