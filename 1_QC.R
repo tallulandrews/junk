@@ -117,13 +117,17 @@ calculate_thresholds <- function(scSCE, pSCE, eSCE, biotype) {
 
 	Pos_ctrl <- pSCE$total_features;
 	Pos_ctrl <- c(min(Pos_ctrl), max(Pos_ctrl))
-	if (median(Pos_ctrl) < 500) { # Pos_ctrl failed
-		Pos_ctrl <- Pos_ctrl[Pos_ctrl > 1000];
-		Pos_ctrl <- c(min(Pos_ctrl), max(scSCE$total_features))
+	if (median(Pos_ctrl) < 500 | min(Pos_ctrl) < 100) { # Pos_ctrl failed
+		#Pos_ctrl <- Pos_ctrl[Pos_ctrl > 1000];
+		#Pos_ctrl <- c(min(Pos_ctrl), max(scSCE$total_features))
+		require("mclust")
+		f <- Mclust(cbind(log(scSCE$total_counts+1), log(scSCE$total_features+1)), G=2)
+		good <- f$classification == 2
+		Pos_ctrl <- c(min(scSCE$total_features[good]), max(scSCE$total_features[good]))
 	}
 	scmean <- mean(scSCE$total_features[scSCE$total_features > Pos_ctrl[1] & scSCE$total_features < Pos_ctrl[2]])
 	scsd <- sd(scSCE$total_features[scSCE$total_features > Pos_ctrl[1] & scSCE$total_features < Pos_ctrl[2]])
-	gLo <- round(max(min(Pos_ctrl, scmean-3*scsd), quantile(eSCE$total_features, probs=0.75)), digits=-3)
+	gLo <- round(max(min(Pos_ctrl, scmean-2.5*scsd), quantile(eSCE$total_features, probs=0.75)), digits=-3) # changed from 3 to 2.5 on 19 April 2018
 	#if (max(eSCE$total_features) > gLo) {
 	#	gLo <- round(max(eSCE$total_features), digits=-3)
 	#}

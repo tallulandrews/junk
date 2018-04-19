@@ -90,7 +90,7 @@ refine_clusters <- function(SCE, expr_type, clusters, markers, lim.AUC=0.7, lim.
 
 	markers$is.Feature <- rownames(markers) %in% rownames(good);	
 
-	assigned <- good[,-c(1, ncol(good), ncol(good)-1)]
+	assigned <- good[,-c(1, ncol(good), ncol(good)-1, ncol(good)-2)]
 	a_names <- colnames(assigned)
 	assigned <- t(apply(assigned, 1, function(a){
 			a <- as.numeric(a)
