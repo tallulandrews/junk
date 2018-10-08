@@ -1,11 +1,11 @@
 
 
-my_get_clusters <- function(consensus, k) {
-	consensus_mat <- SCE@sc3$consensus[[as.character(k)]]
-        consensus_mat <- consensus_mat[[1]]
+my_get_clusters <- function(consensus_mat, k) {
+#	consensus_mat <- SCE@sc3$consensus[[as.character(k)]]
+#        consensus_mat <- consensus_mat[[1]]
         distances <- as.dist(1-consensus_mat)
-        Cs <- cutree(hclust(distances, method="complete"), k=as.numeric(k))
-        Cs2 <- cutree(hclust(distances, method="complete"), h=1-10^-10)
+        Cs <- cutree(hclust(distances, method="average"), k=as.numeric(k))
+        Cs2 <- cutree(hclust(distances, method="average"), h=1-10^-10)
         if (max(Cs2) > max(Cs)) {Cs <-Cs2}
 	return(Cs)
 }
@@ -14,22 +14,27 @@ my_clustering <- function(SCE, k, suppress.plot=TRUE) {
 	require("CellTypeProfiles")
 	
 	
-	consensus_mat <- SCE@sc3$consensus[[k]]
-        consensus_mat <- consensus_mat[[1]]
-        distances <- as.dist(1-consensus_mat)
-	Cs <- my_get_clusters(SCE@sc3$consensus, k);
+	if (class(SCE)[1]=="SCESet") {
+		consensus_mat <- SCE@sc3$consensus[[k]]
+	        consensus_mat <- consensus_mat[[1]]
+	} else if (class(SCE)[1] =="SingleCellExperiment") {
+		consensus_mat <- SCE@metadata$sc3$consensus[[k]]
+	        consensus_mat <- consensus_mat[[1]]
+	}
+	distances <- as.dist(1-consensus_mat)
+	Cs <- my_get_clusters(consensus_mat, k);
 
         #distances <- as.dist(1-consensus_mat)
-        #Cs <- cutree(hclust(distances, method="complete"), k=as.numeric(k))
-        #Cs2 <- cutree(hclust(distances, method="complete"), h=1-10^-10)
+        #Cs <- cutree(hclust(distances, method="average"), k=as.numeric(k))
+        #Cs2 <- cutree(hclust(distances, method="average"), h=1-10^-10)
 	#if (max(Cs2) > max(Cs)) {Cs <-Cs2}
 
 	Cns <- CellTypeProfiles::factor_counts(factor(Cs))
 
+	palette <- cluster_col(max(Cs))
 	if (!suppress.plot) {
-		palette <- cluster_col(max(Cs))
 		require("gplots")
-		heatmap.2(consensus_mat, distfun=function(x){as.dist(1-x)}, hclustfun=function(x){hclust(x, method="complete")},
+		heatmap.2(consensus_mat, distfun=function(x){as.dist(1-x)}, hclustfun=function(x){hclust(x, method="average")},
 			trace="none", ColSideColors=palette[Cs])
 	}
 
@@ -45,24 +50,34 @@ my_clustering <- function(SCE, k, suppress.plot=TRUE) {
         score <- sapply(sets, function(a) {mean(consensus_mat[a,a]) - mean(consensus_mat[a,-a])})
         scores <- sum(score*Cns)/ncol(consensus_mat)
 
-	return(list(sil_nn=neighbours, c_scores=score, overallSil=silhouettes, overallScore=scores, Cs=Cs));
+	return(list(sil_nn=neighbours, c_scores=score, overallSil=silhouettes, overallScore=scores, Cs=Cs, cell_colours=palette[Cs]));
 }
 
 get_optimal_k <- function(SCE) {
 	silhouettes <- vector()
 	scores <- vector()
 
-	for (i in names(SCE@sc3$consensus)) {
+	if (class(SCE)[1] == "SCESet") {
+		consensus <- SCE@sc3$consensus
+	} else if (class(SCE)[1] == "SingleCellExperiment") {
+		consensus <- SCE@metadata$sc3$consensus
+	}
+
+	for (i in names(consensus)) {
 		clust_name <- paste("sc3", i, "clusters", sep="_");
 		stuff <- my_clustering(SCE, i)
 
-		pData(SCE)[,clust_name] <- stuff$Cs;
+		if (class(SCE)[1] == "SCESet") {
+			pData(SCE)[,clust_name] <- stuff$Cs;
+		} else if (class(SCE)[1] == "SingleCellExperiment") {
+			colData(SCE)[,clust_name] <- stuff$Cs;
+		}
 
 		silhouettes <- c(silhouettes, stuff$overallSil)
 		scores <- c(scores, stuff$overallScore)
 	}
 	stability <- vector()
-	for (i in names(SCE@sc3$consensus)) {
+	for (i in names(consensus)) {
 		stability <- c(stability, calculate_stability(SCE, i)$overall)
 	}
 
@@ -73,16 +88,19 @@ get_optimal_k <- function(SCE) {
 	composite_score2 <- apply(cbind(t1, t2, t3), 1, min);
 	optimal_k <- which(composite_score == max(composite_score))+1 # Select optimal K
 	fine_k <- optimal_k
-	if (optimal_k < k_min) {
+	#if (optimal_k < k_min) {
 		#composite_score[optimal_k-1] = 0
 		fine_k <- which(composite_score2 == max(composite_score2))+1
-	}
+	#}
 	return(list(optim = optimal_k, fine = fine_k))
 }
 
 
 refine_clusters <- function(SCE, expr_type, clusters, markers, lim.AUC=0.7, lim.size_pct=5, lim.expect_bernoulli=0.05, lim.sil=0.75, lim.markers=0.4) {
 	require("CellTypeProfiles")
+	if (length(unique(clusters)) < 3) {
+		return(list(newCs=clusters, markers=markers))
+	}
 
 	#markers <- complex_markers(get_exprs(SCE, expr_type), pData(SCE_orig)$clusters_fine)
 	sig <- markers[markers$q.value < 0.05 & markers$q.value > 0,]
@@ -181,12 +199,20 @@ calculate_stability <- function(SCE, k) {
     #labs <- reindex_clusters(hc, k)
     
     clust_name <- paste("sc3", k, "clusters", sep="_");
-    labs <- pData(SCE)[,clust_name]
-    labs <- as.numeric(labs);
+	if (class(SCE)[1] == "SCESet") {
+    		labs <- as.numeric(pData(SCE)[,clust_name])
+	} else if (class(SCE)[1] == "SingleCellExperiment") {
+    		labs <- as.numeric(colData(SCE)[,clust_name])
+	}
+	if (class(SCE)[1] == "SCESet") {
+		consensus <- SCE@sc3$consensus
+	} else if (class(SCE)[1] == "SingleCellExperiment") {
+		consensus <- SCE@metadata$sc3$consensus
+	}
     names(labs) <- colnames(SCE)
     Cns <- CellTypeProfiles::factor_counts(factor(labs))
     
-    ks <- as.numeric(names(SCE@sc3$consensus))
+    ks <- as.numeric(names(consensus))
     kRange <- length(ks)
     
     stability <- rep(0, max(labs))
@@ -197,7 +223,11 @@ calculate_stability <- function(SCE, k) {
         for (k2 in ks) {
             if (k2 != k) {
     		clust_name2 <- paste("sc3", k2, "clusters", sep="_");
-		labs2 <- as.numeric(pData(SCE)[,clust_name2])
+		if (class(SCE)[1] == "SCESet") {
+    			labs2 <- as.numeric(pData(SCE)[,clust_name2])
+		} else if (class(SCE)[1] == "SingleCellExperiment") {
+    			labs2 <- as.numeric(colData(SCE)[,clust_name2])
+		}
 		names(labs2) <- colnames(SCE)
                 clusts <- as.numeric(names(table(labs2[names(labs2) %in% inds])))
                 N <- length(clusts)

@@ -127,7 +127,8 @@ calculate_thresholds <- function(scSCE, pSCE, eSCE, biotype) {
 	}
 	scmean <- mean(scSCE$total_features[scSCE$total_features > Pos_ctrl[1] & scSCE$total_features < Pos_ctrl[2]])
 	scsd <- sd(scSCE$total_features[scSCE$total_features > Pos_ctrl[1] & scSCE$total_features < Pos_ctrl[2]])
-	gLo <- round(max(min(Pos_ctrl, scmean-2.5*scsd), quantile(eSCE$total_features, probs=0.75)), digits=-3) # changed from 3 to 2.5 on 19 April 2018
+	#gLo <- round(max(min(Pos_ctrl, scmean-2.5*scsd), quantile(eSCE$total_features, probs=0.75)), digits=-3) # changed from 3 to 2.5 on 19 April 2018
+	gLo <- round(min(Pos_ctrl, scmean-2.5*scsd), digits=-3) # changed from 3 to 2.5 on 19 April 2018
 	#if (max(eSCE$total_features) > gLo) {
 	#	gLo <- round(max(eSCE$total_features), digits=-3)
 	#}
@@ -217,6 +218,18 @@ for(p in levels(scSCE$Plate)) {
 	png(file, width=8*2, height=8, units="in", res=300)
 	scater::plotPlatePosition(scSCE[,scSCE$Plate==p], plate_position=scSCE$Well[scSCE$Plate==p], colour_by="total_features")
 	dev.off()
+	
+	file=paste(args[3], "SC",p,"PlateFiltered.png", sep="_")
+	png(file, width=8*2, height=8, units="in", res=300)
+        scater::plotPlatePosition(sc_qc[,sc_qc$Plate==p], plate_position=sc_qc$Well[sc_qc$Plate==p], colour_by="Good")
+        dev.off()
+}
+
+table(pData(sc_qc)$Good, sc_qc$Plate)
+table(pData(sc_qc)$Good, sc_qc$Type)
+
+if (sum(sc_qc$Plate == 3313) > 0) {
+sc_qc$Good[sc_qc$Plate == 3313] <- FALSE
 }
 
 
@@ -226,6 +239,7 @@ scale_factor <- median(pData(sc_qc)$total_counts[pData(sc_qc)$Good])
 set_exprs(sc_qc, "norm") <- t(t(counts(sc_qc))/pData(sc_qc)$total_counts*scale_factor)
 set_exprs(sc_qc, "lognorm") <- log(get_exprs(sc_qc, "norm")+1)/log(2)
 saveRDS(sc_qc, file=paste(args[3], "Initial.rds", sep="_"))
+
 
 scQC <- sc_qc[,pData(sc_qc)$Good]
 

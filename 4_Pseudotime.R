@@ -4,6 +4,14 @@ args <- commandArgs(trailingOnly=TRUE) # rds file for data, prefix for output
 source("~/Collaborations/LiverOrganoids/Laura_Pipeline/0_ColourScheme.R")
 outprefix=args[2];
 expr_type <- "lognorm"
+cluster_column <- "clusters_clean"
+if (length(args) > 2) {
+	expr_type <- args[3]
+}
+if (length(args) > 3) {
+	cluster_column <- args[4]
+}
+
 
 set.seed(74468)
 
@@ -13,16 +21,30 @@ require("matrixStats")
 
 SCE <- readRDS(args[1])
 cluster_col_set <- get_group_cols(SCE)
-cluster_names_for_legend <- names(cluster_col_set); cluster_names_for_legend[cluster_names_for_legend == "Outliers"] <- "O";
+if (length(args) > 3) {
+	cluster_col_set <- get_group_cols(SCE, column=cluster_column)
+}
+color_for_legend <- cluster_col_set[names(cluster_col_set) %in% colData(SCE)[,cluster_column]]
 
-SCE <- toSingleCellExperiment(SCE)
+cluster_names_for_legend <- names(cluster_col_set)[names(cluster_col_set) %in% colData(SCE)[,cluster_column]];
+cluster_names_for_legend[cluster_names_for_legend == "Outliers"] <- "O";
+
+# Convert to SingleCellExperiment as necessary
+if (class(SCE)[1] == "SCESet") {
+	SCE <- toSingleCellExperiment(SCE)
+}
+# Use updated cell-cycle if available
+if (sum(colnames(colData(SCE)) == "Cycle") == 1) {
+	colData(SCE)$CC_state_new <- colData(SCE)$Cycle
+}
 
 print("loaded")
 
 if ( !( "fine_marker_is.Feature" %in% colnames(rowData(SCE)) ) ) {
-	rowData(SCE)$fine_marker_is.Feature <- abs(rowData(SCE)$fine_marker_q.value) < 0.05 & rowData(SCE)$fine_marker_AUC > 0.7}
+	rowData(SCE)$fine_marker_is.Feature <- abs(rowData(SCE)$fine_marker_q.value) < 0.05 & rowData(SCE)$fine_marker_AUC > 0.7
+}
 
-keep <- colData(SCE)$clusters_clean != "Outliers"
+keep <- colData(SCE)[,cluster_column] != "Outliers"
 #SCE_clean <- SCE[,keep]
 SCE_clean <- SCE[,keep]
 keep <- rowSums(assays(SCE_clean)[[expr_type]]) > 0 & rowVars(assays(SCE_clean)[[expr_type]]) > 0
@@ -32,7 +54,7 @@ print("filtered")
 
 # KW genes - Feature Selection
 KW_res <- apply(assays(SCE_clean)[[ expr_type ]], 1, function(x) {
-		kruskal.test(x, colData(SCE_clean)$clusters_clean)$p.value})
+		kruskal.test(x, colData(SCE_clean)[,cluster_column])$p.value})
 KW_res[is.na(KW_res)] = 1
 sig <- p.adjust(KW_res, method="bon") < 0.05
 rowData(SCE_clean)$KW_p.value <- KW_res
@@ -85,9 +107,9 @@ require("scatterplot3d")
 
 png(paste(outprefix, "_DM_Pseudotime1.png", sep=""), width=6, height=6, units="in", res=300)
 scatterplot3d::scatterplot3d(colData(SCE)$KW_DM1, colData(SCE)$KW_DM2 , colData(SCE)$KW_DM3, 
-	color=cluster_col_set[ factor(colData(SCE)$clusters_clean, levels=names(cluster_col_set)) ], 
+	color=cluster_col_set[ factor(colData(SCE)[,cluster_column], levels=names(cluster_col_set)) ], 
 	pch=16, xlab="DM1", ylab="DM2", zlab="DM3")
-legend("topleft", pch=16, col=cluster_col_set, cluster_names_for_legend, bty="n", ncol=2)
+legend("topleft", pch=16, col=color_for_legend, cluster_names_for_legend, bty="n", ncol=2)
 dev.off()
 
 #scatterplot3d::scatterplot3d(colData(SCE)$KW_DM1, colData(SCE)$KW_DM2 , colData(SCE)$KW_DM3, 
@@ -116,7 +138,7 @@ dev.off()
 
 ## Monocle ##
 require("monocle")
-SCE_FS2 <- SCE_FS[,colData(SCE_FS)$clusters_clean != "Outliers"]
+SCE_FS2 <- SCE_FS[,colData(SCE_FS)[,cluster_column] != "Outliers"]
 pd <- as.data.frame(colData(SCE_FS2))
 pd <- new("AnnotatedDataFrame", data=pd)
 fd <- as.data.frame(rowData(SCE_FS2))
@@ -135,7 +157,7 @@ png(paste(outprefix, "_Monocle_Pseudotime1.png", sep=""), width=6, height=6, uni
 monocle::plot_cell_trajectory(dCellData, color_by="CC_state_new",  show_branch_points=F)
 dev.off()
 png(paste(outprefix, "_Monocle_Pseudotime2.png", sep=""), width=6, height=6, units="in", res=300)
-monocle::plot_cell_trajectory(dCellData, color_by="clusters_clean", show_branch_points=F)
+monocle::plot_cell_trajectory(dCellData, color_by=cluster_column, show_branch_points=F)
 dev.off()
 
 if (mean(dCellData$Pseudotime[dCellData$CC_state_new %in% c("G1S", "G2M")]) > mean(dCellData$Pseudotime[dCellData$CC_state_new %in% c("None", "G0")]) ) {
@@ -352,8 +374,8 @@ make_mpath_network <- function(SCE_mpath, fs=rownames(counts(SCE_mpath)), distMe
 	invisible(list(network = mpath_network, plot_layout = my_layout))
 }
 
-png(paste(outprefix, "_mpath_Pseudotime.png", sep=""), width=6, height=6, units="in", res=300)
-make_mpath_network(SCE_FS, distMethod="spearman")
-dev.off()
+#png(paste(outprefix, "_mpath_Pseudotime.png", sep=""), width=6, height=6, units="in", res=300)
+#make_mpath_network(SCE_FS, distMethod="spearman")
+#dev.off()
 
-print("Mpath")
+#print("Mpath")

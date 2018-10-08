@@ -16,21 +16,17 @@ expr_type <- "lognorm"
 type_col <- type_col[1:nSCEs]
 
 SCE_list <- list();
-keep_genes <- c()
-background_genes <- c()
 max_ngenes <- 0;
 for (f in args) {
 	require("scater")
 	obj <- readRDS(f);
+	if (class(obj)[1] == "SCESet") {
+		obj <- toSingleCellExperiment(obj)
+	}
 	if (nrow(obj) > max_ngenes) {max_ngenes <- nrow(obj)}
-#	keep_genes <- c(keep_genes, rownames(obj)[fData(obj)$KW_is.Feature & fData(obj)$pct_dropout < 90]);
-	keep_genes <- c(keep_genes, as.character(fData(obj)[ fData(obj)$pct_dropout < 90, "Symbol"]));
-	background_genes <- c(background_genes, rownames(obj)[ fData(obj)$pct_dropout <= 99]);
 	tmp <- unlist(strsplit(f, "\\."))
 	SCE_list[[tmp[1]]] <- obj;
 }
-keep_genes <- unique(keep_genes);
-background_genes <- unique(background_genes);
 
 # Laura_LitMarkers
 Chol_lineage <- read.table("/nfs/users/nfs_t/ta6/Collaborations/LiverOrganoids/Markers_130418_Chol.txt", header=TRUE)
@@ -67,14 +63,16 @@ for (i in 1:nSCEs) {
 	obj <- SCE_list[[i]]
 	obj_orig <- obj;
 
-	obj <- obj[rownames(obj) %in% background_genes,]
-	obj <- obj[, pData(obj)[,clusters_name] != "Outliers"]
-	markers1 <- complex_markers(get_exprs(obj, expr_type), factor(pData(obj)[,clusters_name]), n_max=1)
+	background_genes_spec <- rownames(obj)[ rowData(obj)$pct_dropout <= 99];
+
+	obj <- obj[rownames(obj) %in% background_genes_spec,]
+	obj <- obj[, colData(obj)[,clusters_name] != "Outliers"]
+	markers1 <- complex_markers(assays(obj)[[ expr_type ]], factor(colData(obj)[,clusters_name]), n_max=1)
 	m <- markers1[match(rownames(obj_orig), rownames(markers1)),]
 	colnames(m) <- paste("markers", clusters_name, colnames(m), sep="_")
-	fData(obj_orig) <- cbind(fData(obj_orig), m)
+	rowData(obj_orig) <- cbind(rowData(obj_orig), m)
 
-	fData(obj_orig)$Lineage <- Lineage[ match(fData(obj_orig)$Symbol, Lineage[,1]) , 2]
+	rowData(obj_orig)$Lineage <- Lineage[ match(rowData(obj_orig)$Symbol, Lineage[,1]) , 2]
 
 	SCE_list[[i]] <- obj_orig;
 
@@ -91,7 +89,7 @@ for (i in 1:nSCEs) {
 	get_richments <- function(group) {
 		gene_list <- rownames(markers1)[markers1$Group == group]
 		   enrichments <- gprofiler(gene_list, organism="hsapiens", 
-		   ordered_query=T, significant=T, custom_bg=background_genes, 
+		   ordered_query=T, significant=T, custom_bg=background_genes_spec, 
 		   hier_filtering="moderate", max_set_size=10000,
 		   src_filter=c("GO:BP", "KEGG", "REAC", "HPA"), 
 		   correction_method="fdr", min_isect_size=3, min_set_size=10)
