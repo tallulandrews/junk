@@ -35,9 +35,15 @@ library("scmap")
 RefSCE<-SingleCellExperiment(assays=list(logcounts=as.matrix(mat)), colData=data.frame(cell_type1=cell_type), rowData=data.frame(feature_symbol=sub(" ", "-", rownames(mat))))
 RefSCE <- RefSCE[,!RefSCE$cell_type1 %in% c("erythroblasts", "lymphoblasts", "hepatic", "Kupffer")]
 assays(RefSCE)[["counts"]] <- assays(RefSCE)[["logcounts"]]
+png("All_Liver_Ref_FS.png", width=5, height=5, units="in", res=300)
 RefSCE <- scmap::selectFeatures(RefSCE, suppress_plot=FALSE)
+dev.off()
 RefSCE <- scmap::indexCluster(RefSCE)
 
+require("gplots")
+png("All_Liver_Ref_Profile.png", width=5, height=5, units="in", res=300)
+heatmap.2(as.matrix(log2(metadata(RefSCE)$scmap_cluster_index+1)), trace="none")
+dev.off()
 
 
 

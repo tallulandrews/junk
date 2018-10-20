@@ -81,6 +81,7 @@ names(Plate.col) <- c("869", "870", "868", "3316", "3317", "3318", "3319")
 
 require("M3Drop")
 FS <- M3DropFeatureSelection(Global.norm, mt_method="fdr", mt_threshold=0.05, suppress.plot=FALSE)
+#FS2 <- BrenneckeGetVariableGenes(Global.norm)
 
 # Global Cell-cycle
 set.seed(1973)
@@ -163,8 +164,8 @@ Cycle <- as.character(colData(SCE)$CC_state)
 Lineage <- read.table("Cleaned_Lineage.txt", header=F, stringsAsFactors=FALSE)
 
 # PCA
-pca_data <- as.matrix(Global.lognorm[rownames(Global.lognorm) %in% FS$Gene[1:2000],])
-rownames(pca_data) <- Global.symbol[rownames(Global.lognorm) %in% FS$Gene[1:2000]]
+pca_data <- as.matrix(Global.lognorm[rownames(Global.lognorm) %in% FS$Gene[1:1500],])
+rownames(pca_data) <- Global.symbol[rownames(Global.lognorm) %in% FS$Gene[1:1500]]
 
 
 set.seed(3719869)
@@ -175,11 +176,11 @@ par(mar=c(4,4,1,1))
 plot(pca$rotation[,1], pca$rotation[,2], pch=16, col=Donor.col[factor(Donor, levels=names(Donor.col))], 
 	xlab=paste("PC1 (",round(pca$sdev[1]^2/sum(pca$sdev^2)*100, digits=1), "%)", sep=""),
 	ylab=paste("PC2 (",round(pca$sdev[2]^2/sum(pca$sdev^2)*100, digits=1), "%)", sep=""))
-legend("bottomleft", names(Donor.col), pch=16, col=Donor.col, bty="n", title="Donor")
+legend("bottomright", names(Donor.col), pch=16, col=Donor.col, bty="n", title="Donor")
 plot(pca$rotation[,1], pca$rotation[,2], pch=16, col=Plate.col[factor(Plate, levels=names(Plate.col))], 
 	xlab=paste("PC1 (",round(pca$sdev[1]^2/sum(pca$sdev^2)*100, digits=1), "%)", sep=""),
 	ylab=paste("PC2 (",round(pca$sdev[2]^2/sum(pca$sdev^2)*100, digits=1), "%)", sep=""))
-legend("bottomleft", as.character(1:length(Plate.col)), pch=16, col=Plate.col, bty="n", title="Plate")
+legend("bottomright", as.character(1:length(Plate.col)), pch=16, col=Plate.col, bty="n", title="Plate")
 dev.off()
 
 plot(pca$rotation[,3], pca$rotation[,4], pch=16, col=Donor.col[factor(Donor, levels=names(Donor.col))], 
@@ -205,14 +206,14 @@ png("Supplementary_Fig1_PCAlinScores_Alt.png", width=5, height=5, units="in", re
 par(mar=c(4,4,1,1))
 barplot(barplot_dat, beside=T, col=Type.col[1:3], ylab="Avg Marker Weights")
 abline(h=c(7.5,-7.5), col="grey50", lty=2)
-legend("bottomright", c("Chol = PC1", "Stem = PC1 -PC2 +PC3 -PC5", "Hep = -PC2 -PC3"), fill=Type.col, bty="n")
+legend("bottomright", c("Chol = PC1", "Stem = -PC2 -PC3 +PC5", "Hep = -PC2 +PC3"), fill=Type.col, bty="n")
 dev.off()
 
 # from the top 10 components take those with average weights > 10
 thing <- apply(pca$rotation, 2, scale)
 chol_score <- (thing[,1])/1
-hep_score <- (-thing[,2]-thing[,3])/2
-stem_score <- (thing[,1]-thing[,2]+thing[,3]-thing[,5])/4
+hep_score <- (-thing[,2]+thing[,3])/2
+stem_score <- (thing[,5]-thing[,2]-thing[,3])/3
 
 xes <- hep_score-chol_score
 #xes[hep_score>chol_score] <- hep_score[hep_score>chol_score]
@@ -327,7 +328,7 @@ lin_label <- Lineage[match(rownames(heat_data2), Lineage[,1]),2]
 RowColors2 <- c("forestgreen", "darkgoldenrod", "darkgoldenrod", "darkgoldenrod", "firebrick")[factor(lin_label, levels=c("Chol-Mature", "Chol-Prog", "Common-Prog", "Hep-Prog", "Hep-Mature"))]
 RowColors2[is.na(RowColors2)] <- "white"
 
-png("Figure1_heatmap_Alt.png", width=6*2, height=6, units="in", res=300)
+png("Figure1_heatmap2_Alt.png", width=6*2, height=6, units="in", res=300)
 heatmap_output <- suppressWarnings(heatmap.2(t(heat_data2), 
             ColSideColors = RowColors2, RowSideColors = ColColors1, 
             col = heatcolours, breaks = col_breaks, scale = "row", 
