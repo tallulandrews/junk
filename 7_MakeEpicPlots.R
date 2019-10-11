@@ -2,6 +2,7 @@ require("fastICA")
 require("Rtsne")
 require("scater")
 require("SingleCellExperiment")
+require("destiny")
 
 set.seed(1328298)
 
@@ -9,7 +10,7 @@ set.seed(1328298)
 
 
 # Plot Clusters in reduced dimensions
-ica <- factICA(mat, n.comp=k)
+ica <- fastICA(mat, n.comp=k)
 
 pca <- prcomp(mat)
 

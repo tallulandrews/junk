@@ -120,7 +120,21 @@ for(i in out$fits) {
 }
 dev.off()
 
+# Cycle by donor
 Cycle <- as.character(colData(SCE)$CC_state)
+Cycle <- factor(Cycle, levels=names(Cycle.col))
+Donor <- as.character(colData(SCE)$Donor)
+t <- table(Cycle, Donor);
+t <- t( t(t)/colSums(t)*100 )
+t <- t[,c(2,1,6,4,5,3)]
+
+png("Supplementary_Fig1_ProlifDonor_Alt.png", width=5.5, height=5.5, units="in", res=300)
+par(mar=c(4,4,1,1))
+barplot(t, col=Cycle.col, las=2, ylab="Cells (%)")
+dev.off()
+
+
+
 
 # Lineage markers
 #Chol_lineage <- read.table("/nfs/users/nfs_t/ta6/Collaborations/LiverOrganoids/Markers_130418_Chol.txt", header=TRUE)
@@ -399,7 +413,7 @@ colnames(ctrl_pro) <- c("D3DM", "D3EM", "D9DM", "D9EM")
 colnames(ctrl_qui) <- c("D3DM", "D3EM", "D9DM", "D9EM")
 
 sig_norm <- apply(ctrl_p, 2, function(y){p.adjust(y, method="fdr") < 0.05})
-multi <- rowSums(sig_normal, na.rm=T)>2
+multi <- rowSums(sig_norm, na.rm=T)>2
 sig_norm <- sig_norm[match(rownames(sig_cancer), rownames(sig_norm)),]
 
 
@@ -430,6 +444,7 @@ top <- rownames(sig_cancer)[rowSums(sig_cancer, na.rm=T)>=6]# & rowSums(sig_norm
 top <- top[!top %in% c(HGeneSets$Tirosh$Gene, HGeneSets$Macosko$Gene, HGeneSets$Whitfield$Gene, GO_cc)]
 effect <- cbind(l2fc_cancer)#, l2fc_norm)
 good <- rownames(effect)[rowMeans(effect) > 2]
+require("gplots")
 png("Consistent_Prolif_Alt.png", width=6, height=9, units="in", res=300)
 heatmap.2(log2(effect[rownames(effect) %in% top & rownames(effect) %in% good,]), trace="none", col=heat_cols)
 dev.off()

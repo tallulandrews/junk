@@ -467,7 +467,10 @@ GO_telo <- unique(GO[GO[,3] == "telomere maintenance",1])
 LigRec <- read.delim("~/Data/LigandReceptorPairs.csv", sep=",", header=T)
 GO_tf <- unique(GO[grep("transcription factor activity", GO[,3]),1])
 
-Lineage <- read.table("/lustre/scratch117/cellgen/team218/TA/LiverOrganoids/Analysis_Pipeline_Output/Cleaned_Lineage.txt")
+#Lineage <- read.table("/lustre/scratch117/cellgen/team218/TA/LiverOrganoids/Analysis_Pipeline_Output/Cleaned_Lineage.txt")
+Lineage <- read.table("/nfs/users/nfs_t/ta6/Collaborations/LiverOrganoids/Cleaned_PatLineage.txt")
+
+Surface <- read.delim("~/Data/Combined_Surfaceome.csv", sep=",")
 
 add_anno <- function(marker_tab) {
         marker_tab$is.cycle <- rownames(marker_tab) %in% GO_cc
@@ -476,6 +479,9 @@ add_anno <- function(marker_tab) {
         marker_tab$ReceptorOf <- LigRec[match(marker_tab$Symbol,LigRec$Receptor.ApprovedSymbol),"Ligand.ApprovedSymbol"]
         marker_tab$LigandTo <- LigRec[match(marker_tab$Symbol,LigRec$Ligand.ApprovedSymbol),"Receptor.ApprovedSymbol"]
         marker_tab$Lineage <- Lineage[match(marker_tab$Symbol,Lineage[,1]),2]
+	tmp <- Surface[match(marker_tab$Symbol,rownames(Surface)),]
+	tmp[is.na(tmp)] <- 0
+        marker_tab <- cbind(marker_tab, tmp)
         return(marker_tab)
 }
 
@@ -509,6 +515,10 @@ make_cluster_marker_tables <- function(line_name) {
         marks <- complex_markers(mark_mat, factor(SCE$Manual_Clusters[mark_cells]))
 	marks$is.GoodMarker <- marks$AUC > 0.75 & marks$q.value < 0.05
 
+	# Markers V2 (scfind)
+	#index <- buildCellTypeIndex(SCE, dataset.name=line_name, cell.type.label="Manual_Clusters")
+	#find_marks <- evaluateMarkers(index, rownames(SCE), unique(SCE$Manual_Clusters))
+
 	# Mean Expression
 	expr_table <- my_row_mean_aggregate(assays(SCE)[["logcounts"]][,mark_cells], SCE$Manual_Clusters[mark_cells])
 
@@ -519,7 +529,7 @@ make_cluster_marker_tables <- function(line_name) {
 	MARKERS <- add_anno(MARKERS); 
 	MARKERS <- MARKERS[MARKERS$AUC != -1 ,]
 
-	write.table(MARKERS, file=paste(line_name, "ManualClustering_MarkerTable.csv", sep="_"), sep=",")
+	write.table(MARKERS, file=paste(line_name, "ManualClustering_MarkerTable_Nov2018.csv", sep="_"), sep=",")
 
 	Clust_marks <- MARKERS[MARKERS$is.GoodMarker, ]
 	unique_marks <- Clust_marks[,2:( ncol(marks) -3)]
@@ -553,7 +563,7 @@ make_cluster_marker_tables <- function(line_name) {
 }
 
 tmp_names <- rds_names[6:10]
-for (line in tmp_names) {
+for (line in rds_names) {
 	print(line)
 	make_cluster_marker_tables(line)
 }

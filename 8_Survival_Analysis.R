@@ -82,7 +82,7 @@ score_vs_stage <- function(tcga, score) {
 score_vs_death <- function(tcga, score, top_quantile=0.5) {
 	hi <- score > quantile(score, probs=top_quantile)
 	low <- score < quantile(score, probs=1-top_quantile)
-	boxes <- boxplot(tcga$death[hi], tcga$death[low], notch=TRUE, names=c("High", "Low"), xlab="Score", ylab="Time to Death (days)", col=c("#4575b4","#d73027"))
+	boxes <- boxplot(tcga$death[hi], tcga$death[low], notch=TRUE, names=c("High", "Low"), xlab="Score", ylab="Time to Death (days)", col=c("#d73027", "#4575b4"))
 	p <- wilcox.test(tcga$death[hi], tcga$death[low])
 	yes <- max(boxes$stats[4,1:2])*1.1
 	xes <- c(1-0.15,2+0.15)
@@ -117,13 +117,13 @@ do_survival_test <- function(tcga, score, top_quantile=0.5) {
 tcga <- loadTCGA()
 genes <- read.table("Consistent_Prolif_notCC_Alt.txt")
 score <- calcScores(tcga, rownames(genes))
-png("Consistent_Prolif_notCC_Survival_Alt.png", width=6*1.75, height=6, units="in", res=300)
+png("Consistent_Prolif_notCC_Survival_Alt.png", width=5*1.75, height=5, units="in", res=300)
 par(mfrow=c(1,2))
 do_survival_test(tcga, score, 0.5)
 score_vs_death(tcga, score)
 dev.off()
 
-png("Consistent_Prolif_notCC_Stage_Alt.png", width=6, height=6, units="in", res=300)
+png("Consistent_Prolif_notCC_Stage_Alt.png", width=5, height=5, units="in", res=300)
 score_vs_stage(tcga, score)
 dev.off()
 
