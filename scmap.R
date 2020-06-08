@@ -1,5 +1,6 @@
 library(SingleCellExperiment)
 require("scater")
+set.seed(1932)
 # Hepatocyte Ref
 Camp <- readRDS("/lustre/scratch117/cellgen/team218/TA/scRNASeqDatasets/camp_human.rds")
 Camp <- toSingleCellExperiment(Camp);
@@ -40,11 +41,37 @@ RefSCE <- scmap::selectFeatures(RefSCE, suppress_plot=FALSE)
 dev.off()
 RefSCE <- scmap::indexCluster(RefSCE)
 
+# Reference V2
+require("Matrix")
+RefSCE2 <- readRDS("/lustre/scratch117/cellgen/team218/TA/scRNASeqDatasets/Liver/HLiver_MacParland.rds")
+RefSCE2 <- RefSCE2[, !RefSCE2$cell_type1 %in% c("outliers", "unknown", "unknown2", "unknown3")]
+RefSCE2$cell_type1 <- factor(RefSCE2$cell_type1)
+tot <- Matrix::rowSums(assays(RefSCE2)[["logcounts"]])
+RefSCE2 <- RefSCE2[tot > 100,]
+names(assays(RefSCE2)) <- "logcounts"
+assays(RefSCE2)[["logcounts"]] <- as.matrix(assays(RefSCE2)[["logcounts"]])
+assays(RefSCE2)[["lognorm"]] <- assays(RefSCE2)[["logcounts"]]
+sf <- colSums(assays(RefSCE2)[["logcounts"]])
+assays(RefSCE2)[["logcounts"]] <- t( t(assays(RefSCE2)[["logcounts"]])/sf*median(sf) )
+
+require("CellTypeProfiles")
+marks <- complex_markers(assays(RefSCE2)[["logcounts"]], RefSCE2$cell_type1)
+marks_sig <- marks[marks$q.value < 0.05 & marks$AUC > 0.85,]
+png("All_Liver_Ref2_FS.png", width=5, height=5, units="in", res=300)
+RefSCE2 <- scmap::selectFeatures(RefSCE2, suppress_plot=FALSE)
+dev.off()
+rowData(RefSCE2)$scmap_features <- rowData(RefSCE2)$scmap_features | rownames(RefSCE2) %in% rownames(marks_sig)
+RefSCE2 <- scmap::indexCluster(RefSCE2)
+saveRDS(RefSCE2, "HLiverAtlasRef.rds")
+
 require("gplots")
 png("All_Liver_Ref_Profile.png", width=5, height=5, units="in", res=300)
 heatmap.2(as.matrix(log2(metadata(RefSCE)$scmap_cluster_index+1)), trace="none")
 dev.off()
 
+png("All_Liver_Ref2_Profile.png", width=5, height=5, units="in", res=300)
+heatmap.2(as.matrix(log2(metadata(RefSCE2)$scmap_cluster_index+1)), trace="none")
+dev.off()
 
 
 # Read in each line and map them
@@ -68,8 +95,11 @@ this_SCE <- readRDS(clustered_rds[i])
 keep_cells <- plotting_stuff$cell_colors[[i]] %in% palette
 this_SCE <- this_SCE[,keep_cells]
 tmpRef <-RefSCE[rowData(RefSCE)$feature_symbol %in% rowData(this_SCE)$Symbol,]
+tmpRef2 <-RefSCE2[rowData(RefSCE2)$feature_symbol %in% rowData(this_SCE)$Symbol,]
 this_SCE <- this_SCE[match(rowData(tmpRef)$feature_symbol, rowData(this_SCE)$Symbol),]
+set.seed(817)
 out <- scmapCluster(this_SCE, list(ref=metadata(tmpRef)$scmap_cluster_index), threshold=-1)
+out2 <- scmapCluster(this_SCE, list(ref=metadata(tmpRef2)$scmap_cluster_index), threshold=0.3)
 
 # Visualize Results
 
@@ -101,7 +131,7 @@ leg_names[leg_names=="adult hepatocytes"] <- "a-hepato"
 leg_names[leg_names=="fetal hepatocytes"] <- "f-hepato"
 leg_names[leg_names=="endothelial"] <- "endoth"
 
-png(paste(names(clustered_rds)[i], "scmap_barplot_Alt.png", sep="_"), width=6, height=6, units="in", res=300)
+#png(paste(names(clustered_rds)[i], "scmap_barplot_Alt.png", sep="_"), width=6, height=6, units="in", res=300)
 
 barplot(stuff, col=stuff_col)
 if (!is.null(nrow(stuff))) {
@@ -115,14 +145,14 @@ legend("topright", leg_names, fill=stuff_col, bty="n")
 } else {
 legend("topleft", leg_names, fill=stuff_col, bty="n")
 }
-dev.off()	
+#dev.off()	
 
 table(out$scmap_cluster_labs, this_SCE$Proliferating)
 table(out$scmap_cluster_labs, this_SCE$Manual_Clusters)
 
 #boxplot(out$scmap_cluster_siml~this_SCE$Manual_Clusters, col=palette)
 
-png(paste(names(clustered_rds)[i], "scmap_scatter_Alt.png", sep="_"), width=6, height=6, units="in", res=300)
+#png(paste(names(clustered_rds)[i], "scmap_scatter_Alt.png", sep="_"), width=6, height=6, units="in", res=300)
 	par(mar=c(4,4,2,1))
 	xes <- plotting_stuff$cell_coords[[i]][keep_cells,1]
 	yes <- plotting_stuff$cell_coords[[i]][keep_cells,2]
@@ -133,9 +163,65 @@ png(paste(names(clustered_rds)[i], "scmap_scatter_Alt.png", sep="_"), width=6, h
 	legend("topleft", leg_names, fill=stuff_col, bty="n")
 #	plot(xes, yes, xlab="Dim 1", ylab="Dim 2", 
 #		bg=brewer.pal(8,"Greys")[cut(out$scmap_cluster_siml, breaks=9)], pch=21, cex=2)
-dev.off()	
+#dev.off()	
+
+## Reference 2 ##
+colours2 <- c("grey50", brewer.pal(6,"Purples"), "darkgreen", brewer.pal(6,"Reds")[4:6], brewer.pal(4,"Blues")[2:4], brewer.pal(5,"PuRd")[3:4])
+names(colours2) <- c("unassigned","abTcells", "gdTcells", "gdTcells2","NKcells", "Macrophages", "Bcells",
+			 "Cholangiocytes", "Hepatocyptes3", "Hepatocytes2", "Hepatocytes",
+			"LSECs", "Stellate", "Endothelial",
+			"PlasmaCells", "Erythroid")
+
+stuff <- table(out2$scmap_cluster_labs, this_SCE$Manual_Clusters)
+stuff_col <- colours2[names(colours2) %in% rownames(stuff)]
+stuff <- stuff[match(names(stuff_col), rownames(stuff)),]
+
+leg_names <- names(stuff_col)
+leg_names[leg_names=="Cholangiocytes"] <- "Chol"
+leg_names[leg_names=="Hepatocytes"] <- "Hep1"
+leg_names[leg_names=="Hepatocytes2"] <- "Hep2"
+leg_names[leg_names=="Hepatocyptes3"] <- "Hep3"
+leg_names[leg_names=="PlasmaCells"] <- "Plasma"
+leg_names[leg_names=="Endothelial"] <- "Endoth"
+leg_names[leg_names=="Macrophages"] <- "Macro"
+
+png(paste(names(clustered_rds)[i], "scmap2_barplot_Alt.png", sep="_"), width=6, height=6, units="in", res=300)
+barplot(stuff, col=stuff_col)
+if (!is.null(nrow(stuff))) {
+thingsums <- colSums(stuff)
+} else {
+thingsums<- stuff
+stuff <- table(out2$scmap_cluster_labs, this_SCE$Manual_Clusters)
+}
+if (thingsums[1] > thingsums[ncol(stuff)]) {
+legend("topright", leg_names, fill=stuff_col, bty="n")
+} else {
+legend("topleft", leg_names, fill=stuff_col, bty="n")
+}
+dev.off()
+
+png(paste(names(clustered_rds)[i], "scmap2_scatter_Alt.png", sep="_"), width=6, height=6, units="in", res=300)
+        par(mar=c(4,4,2,1))
+        xes <- plotting_stuff$cell_coords[[i]][keep_cells,1]
+        yes <- plotting_stuff$cell_coords[[i]][keep_cells,2]
+        plot(xes, yes,
+                xlab="Dim 1", ylab="Dim 2",
+                bg=stuff_col[factor(out2$scmap_cluster_labs,
+                levels=names(stuff_col))], pch=21, cex=2)
+        legend("topright", leg_names, fill=stuff_col, bty="n")
+#       plot(xes, yes, xlab="Dim 1", ylab="Dim 2", 
+#               bg=brewer.pal(8,"Greys")[cut(out$scmap_cluster_siml, breaks=9)], pch=21, cex=2)
+dev.off()
 
 }
+
+
+
+
+
+
+
+
 
 
 
