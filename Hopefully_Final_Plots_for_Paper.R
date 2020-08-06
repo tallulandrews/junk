@@ -41,9 +41,9 @@ sce_objs <- list(CCA1="CCA1_manual_SC3.rds",
 		  HCC23="HCC23_manual_SC3.rds",
 		  HCC24="HCC24_manual_SC3.rds",
 		  D3DM="D3DM_manual_SC3.rds",
-		  D3EM="D3EM_manual_SC3.rds",
-		  D9DM="D9DM_manual_SC3.rds",
-		  D9EM="D9EM_manual_SC3.rds")
+		  D3EM="D3EM_manual_SC3.rds")
+#		  D9DM="D9DM_manual_SC3.rds",
+#		  D9EM="D9EM_manual_SC3.rds")
 
 dim_reduction <- list(CCA1="CCA1_1000_Visualizations_dims.rds",
 		      CCA5="CCA5_1000_Visualizations_dims.rds",
@@ -52,9 +52,9 @@ dim_reduction <- list(CCA1="CCA1_1000_Visualizations_dims.rds",
 		      HCC23="HCC23_1000_Visualizations_dims.rds",
 		      HCC24="HCC24_500_Visualizations_dims.rds",
 		      D3DM="D3DM_1000_Visualizations_dims.rds",
-		      D3EM="D3EM_1000_Visualizations_dims.rds",
-		      D9DM="D9DM_1000_Visualizations_dims.rds",
-		      D9EM="D9EM_1000_Visualizations_dims.rds")
+		      D3EM="D3EM_1000_Visualizations_dims.rds")
+#		      D9DM="D9DM_1000_Visualizations_dims.rds",
+#		      D9EM="D9EM_1000_Visualizations_dims.rds")
 
 line_specific_genes <- list(CCA1=c("ATP1B3", "DPAGT1", "CLDN2", "AQP5", "EZH2", "RECQL4", "TRAIP", "LMNB1", "CDCA7L", "IQGAP3", "DDIAS", "CA9", "NDRG1", "ATP2B4", "DAPK1", "HIST1H2AC"),
 			    CCA5=c("HMGB2", "LDHA", "CD81", "ANXA4"),
