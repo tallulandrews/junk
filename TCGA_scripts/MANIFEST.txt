@@ -1,0 +1,2 @@
+id	filename	md5	size	state
+e4e4df95-84e9-4811-9ff9-d3bf4f3be116	e4e4df95-84e9-4811-9ff9-d3bf4f3be116/908d56cc-fda7-431b-963c-e8ca753f5561.htseq.counts.gz	80b86dca2198ca1b03c4995a59b970f4	241890	live
